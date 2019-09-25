@@ -6,13 +6,24 @@ use std::cell::Cell;
 
 pub struct DestinationDevice {
     uidev: UInputDevice,
-    state: DestinationDeviceState,
+    components: InternalComponents,
+    should_sync: Cell<bool>,
 }
 
 #[derive(Default)]
-struct DestinationDeviceState {
-    changed: Cell<bool>,
-    rel_acc: Option<Vec<Cell<f32>>>,
+struct InternalComponents {
+    relative: Option<Vec<Cell<RelativeComponent>>>,
+    key: Option<Vec<Cell<KeyComponent>>>,
+}
+
+#[derive(Clone, Copy, Default)]
+struct RelativeComponent {
+    acc: f32,
+}
+
+#[derive(Clone, Copy, Default)]
+struct KeyComponent {
+    pressed: bool,
 }
 
 // TODO: implement device capability
@@ -49,46 +60,66 @@ impl DestinationDevice {
 
         let uidev = UInputDevice::new_from_device(dev)?;
 
-        let mut state = DestinationDeviceState::default();
-        state.rel_acc = Some(vec![Default::default(); REL_MAX as usize]);
+        let mut components = InternalComponents::default();
+        components.relative = Some(vec![Default::default(); REL_CNT as usize]);
+        components.key = Some(vec![Default::default(); KEY_CNT as usize]);
 
-        Ok(DestinationDevice { uidev, state })
+        Ok(DestinationDevice {
+            uidev,
+            components, 
+            should_sync: Cell::from(false),
+        })
     }
 
     pub fn write_event(&self, type_: u32, code: u32, value: i32) -> Result<()> {
-        self.state.changed.set(true);
+        self.should_sync.set(true);
         Ok(self.uidev.write_event(type_, code, value)?)
     }
 
     pub fn move_relative(&self, code: u32, amount: f32) -> Result<()> {
-        let cell = match &self.state.rel_acc {
-            Some(map) =>
-                match map.get(code as usize) {
-                    Some(cell) => cell,
-                    None =>
-                        return Err(Error::Message(format!("invalid event code: {}", code).into())),
-                },
-            None =>
-                return Err(Error::Message("invalid event type: EV_REL".into())),
-        };
+        let component_cell =
+            self.components.relative.as_ref()
+                .ok_or_else(|| Error::Message("invalid component: Relative".into()))?
+            .get(code as usize)
+                .ok_or_else(|| Error::Message(format!("invalid event code: {}", code)))?
+            ;
 
-        let mut acc = cell.get() + amount;
-
+        let mut component = component_cell.get();
+        let mut acc = component.acc + amount;
         let trunc = acc.trunc();
         if trunc.abs() > 0.0f32 {
             self.write_event(EV_REL, code, trunc as i32)?;
             acc -= trunc;
         }
-
-        cell.set(acc);
+        component.acc = acc;
+        component_cell.set(component);
         
         Ok(())
     }
 
+    pub fn press_key(&self, code: u32, press: bool) -> Result<()> {
+        let component_cell =
+            self.components.key.as_ref()
+                .ok_or_else(|| Error::Message("invalid component: Relative".into()))?
+            .get(code as usize)
+                .ok_or_else(|| Error::Message(format!("invalid event code: {}", code)))?
+            ;
+        
+        let mut component = component_cell.get();
+        if component.pressed != press {
+            self.write_event(EV_KEY, code, if press { 1 } else { 0 })?;
+
+            component.pressed = press;
+            component_cell.set(component);
+        }
+
+        Ok(())
+    }
+
     pub fn sync(&self) {
-        if self.state.changed.get() {
+        if self.should_sync.get() {
             let _ = self.write_event(EV_SYN, SYN_REPORT, 0);
-            self.state.changed.set(false);
+            self.should_sync.set(false);
         }
     }
 }

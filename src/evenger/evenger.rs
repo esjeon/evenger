@@ -79,7 +79,7 @@ impl Evenger {
 
         let evtype = event.type_();
         let evcode = event.code();
-        match (evtype as u32, evcode as u32) {
+        match (evtype, evcode) {
             (EV_REL, REL_Y) => {
                 if Some(1) == srcdev.get_event_state(EV_KEY, BTN_TASK) {
                     /* mapping REL to REL */
@@ -97,10 +97,8 @@ impl Evenger {
             },
             (EV_KEY, KEY_LEFTSHIFT) => {
                 if Some(1) == srcdev.get_event_state(EV_LED, LED_CAPSL) {
-                    self.destdev.write_event(EV_KEY,
-                        KEY_CAPSLOCK, 1)?;
-                    self.destdev.write_event(EV_KEY,
-                        KEY_CAPSLOCK, 0)?;
+                    self.destdev.press_key(KEY_CAPSLOCK, true)?;
+                    self.destdev.press_key(KEY_CAPSLOCK, false)?;
                 }
             },
             _ => {},
