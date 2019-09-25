@@ -3,7 +3,7 @@ use crate::evdev::{InputEvent};
 use crate::muxer;
 use super::{Error, Result};
 use super::destdev::{DestinationDevice};
-use super::srcdev::{SourceDevice};
+use super::srcdev::{SourceDevice, Modifier};
 use muxer::Muxer;
 use std::collections::HashMap;
 use std::os::unix::io::RawFd;
@@ -81,7 +81,7 @@ impl Evenger {
         let evcode = event.code();
         match (evtype, evcode) {
             (EV_REL, REL_Y) => {
-                if Some(1) == srcdev.get_event_state(EV_KEY, BTN_TASK) {
+                if Some(true) == srcdev.is_modifier_active(Modifier::Key(BTN_TASK)) {
                     /* mapping REL to REL */
                     self.destdev.move_relative(REL_WHEEL,
                         event.value() as f32 / -16.0f32)?;
@@ -89,14 +89,15 @@ impl Evenger {
                 }
             },
             (EV_KEY, KEY_CAPSLOCK) => {
-                if Some(1) == srcdev.get_event_state(EV_LED, LED_CAPSL) 
-                    && event.value() == /* down */1  {
-                    /* ignore */
-                    return Ok(());
+                if Some(true) == srcdev.is_modifier_active(Modifier::Led(LED_CAPSL)) {
+                    if event.value() == /* down */1  {
+                        /* ignore */
+                        return Ok(());
+                    }
                 }
             },
             (EV_KEY, KEY_LEFTSHIFT) => {
-                if Some(1) == srcdev.get_event_state(EV_LED, LED_CAPSL) {
+                if Some(true) == srcdev.is_modifier_active(Modifier::Led(LED_CAPSL)) {
                     self.destdev.press_key(KEY_CAPSLOCK, true)?;
                     self.destdev.press_key(KEY_CAPSLOCK, false)?;
                 }
