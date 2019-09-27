@@ -55,7 +55,7 @@ impl SourceDevice {
         self.dev.fetch_event_value(type_, code)
     }
 
-    pub fn is_modifier_active(&self, modf: Modifier) -> Option<bool> {
+    pub fn match_modifier(&self, modf: Modifier) -> Option<bool> {
         let (type_, code) = match modf {
             Modifier::Key(code)    => (EV_KEY, code),
             Modifier::Led(code)    => (EV_LED, code),
