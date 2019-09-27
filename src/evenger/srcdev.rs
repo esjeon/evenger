@@ -1,17 +1,17 @@
 
 use crate::evdev::{Device, InputEvent, ReadFlag, ReadStatus};
 use crate::foreign::*;
-use super::Result;
+use super::{DeviceId, Result};
 use std::{path::Path, rc::Rc};
 use std::os::unix::io::RawFd;
 
 pub struct SourceDevice {
-    id: Rc<String>,
+    id: DeviceId,
     dev: Device,
 }
 
 pub struct Event {
-    srcdev_id: Rc<String>,
+    srcdev_id: DeviceId,
     base: InputEvent,
 }
 
@@ -26,7 +26,7 @@ pub enum Modifier {
 }
 
 impl SourceDevice {
-    pub fn open<P: AsRef<Path>>(id: Rc<String>, devpath: P) -> Result<SourceDevice> {
+    pub fn open<P: AsRef<Path>>(id: DeviceId, devpath: P) -> Result<SourceDevice> {
         use nix::fcntl::OFlag;
         use nix::sys::stat::Mode;
         let fd = nix::fcntl::open(
@@ -44,7 +44,7 @@ impl SourceDevice {
         Ok(SourceDevice { id, dev })
     }
 
-    pub fn id(&self) -> Rc<String> {
+    pub fn id(&self) -> DeviceId {
         Rc::clone(&self.id)
     }
 
@@ -87,11 +87,11 @@ impl SourceDevice {
 }
 
 impl Event {
-    pub fn new(srcdev_id: Rc<String>, base: InputEvent) -> Self {
+    pub fn new(srcdev_id: DeviceId, base: InputEvent) -> Self {
         Self { srcdev_id, base }
     }
 
-    pub fn srcdev_id(&self) -> Rc<String> {
+    pub fn srcdev_id(&self) -> DeviceId {
         Rc::clone(&self.srcdev_id)
     }
 

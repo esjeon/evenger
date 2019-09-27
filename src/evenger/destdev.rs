@@ -1,10 +1,11 @@
 
 use crate::evdev::{Device, UInputDevice};
 use crate::foreign::*;
-use super::{Error, Result};
+use super::{DeviceId, Error, Result};
 use std::cell::Cell;
 
 pub struct DestinationDevice {
+    id: DeviceId,
     uidev: UInputDevice,
     components: InternalComponents,
     should_sync: Cell<bool>,
@@ -31,7 +32,7 @@ struct KeyComponent {
 // }
 
 impl DestinationDevice {
-    pub fn new() -> Result<DestinationDevice> {
+    pub fn new(id: DeviceId) -> Result<DestinationDevice> {
         let mut dev = Device::new().unwrap();
 
         dev.set_name("evdev device");
@@ -65,10 +66,15 @@ impl DestinationDevice {
         components.key = Some(vec![Default::default(); KEY_CNT as usize]);
 
         Ok(DestinationDevice {
+            id,
             uidev,
             components, 
             should_sync: Cell::from(false),
         })
+    }
+
+    pub fn id(&self) -> DeviceId {
+        self.id.clone()
     }
 
     pub fn write_event(&self, type_: u32, code: u32, value: i32) -> Result<()> {

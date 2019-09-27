@@ -23,7 +23,7 @@ impl Evenger {
         let muxer = Muxer::new()
             .map_err(|e| Error::Description("muxer".into(), Box::new(e)))?;
 
-        let destdev = DestinationDevice::new()
+        let destdev = DestinationDevice::new(Rc::new("output".to_string()))
             .map_err(|e| Error::Description("destdev".into(), Box::new(e)))?;
 
         Ok(Evenger {
