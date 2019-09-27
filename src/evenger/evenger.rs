@@ -1,9 +1,8 @@
 
-use crate::evdev::{InputEvent};
 use crate::muxer;
 use super::{Error, Result};
 use super::destdev::{DestinationDevice};
-use super::srcdev::{SourceDevice, Modifier};
+use super::srcdev::{SourceDevice, Event, Modifier};
 use muxer::Muxer;
 use std::{path::Path, rc::Rc};
 use std::collections::HashMap;
@@ -115,7 +114,7 @@ impl Evenger {
         loop {
             match srcdev.read_event()? {
                 Some(event) => {
-                    self.translate_event(srcdev, &event)?;
+                    self.translate_event(&event)?;
                 },
                 None => break,
             }
@@ -124,14 +123,17 @@ impl Evenger {
         Ok(())
     }
 
-    fn translate_event(&self, srcdev: &SourceDevice, event: &InputEvent) -> Result<()> {
+    fn translate_event(&self, event: &Event) -> Result<()> {
         use crate::foreign::*;
 
-        let evtype = event.type_();
-        let evcode = event.code();
-        match (evtype, evcode) {
+        let target = event.target();
+
+        match (target.type_(), target.code()) {
             (EV_REL, REL_Y) => {
-                if Some(true) == srcdev.match_modifier(Modifier::Key(BTN_TASK)) {
+                let mouse_dev = self.get_srcdev_by_id(Rc::new("mouse".to_string()))
+                    .ok_or_else(|| Error::msg("can't get device 'mouse'"))?;
+
+                if Some(true) == mouse_dev.match_modifier(Modifier::Key(BTN_TASK)) {
                     /* mapping REL to REL */
                     self.destdev.move_relative(REL_WHEEL,
                         event.value() as f32 / -16.0f32)?;
@@ -139,7 +141,10 @@ impl Evenger {
                 }
             },
             (EV_KEY, KEY_CAPSLOCK) => {
-                if Some(true) == srcdev.match_modifier(Modifier::Led(LED_CAPSL)) {
+                let keyboard_dev = self.get_srcdev_by_id(Rc::new("keyboard".to_string()))
+                    .ok_or_else(|| Error::msg("can't get device 'keyboard'"))?;
+
+                if Some(true) == keyboard_dev.match_modifier(Modifier::Led(LED_CAPSL)) {
                     if event.value() == /* down */1  {
                         /* ignore */
                         return Ok(());
@@ -147,7 +152,10 @@ impl Evenger {
                 }
             },
             (EV_KEY, KEY_LEFTSHIFT) => {
-                if Some(true) == srcdev.match_modifier(Modifier::Led(LED_CAPSL)) {
+                let keyboard_dev = self.get_srcdev_by_id(Rc::new("keyboard".to_string()))
+                    .ok_or_else(|| Error::msg("can't get device 'keyboard'"))?;
+
+                if Some(true) == keyboard_dev.match_modifier(Modifier::Led(LED_CAPSL)) {
                     self.destdev.press_key(KEY_CAPSLOCK, true)?;
                     self.destdev.press_key(KEY_CAPSLOCK, false)?;
                 }
@@ -155,9 +163,9 @@ impl Evenger {
             _ => {},
         };
 
-        if let Err(e) = self.destdev.write_event(evtype, evcode, event.value()) {
+        if let Err(e) = self.destdev.write_event(target.type_(), target.code(), event.value()) {
             eprintln!("passthru failure (type={} code={} value={}): {}",
-                evtype, evcode, event.value(), e);
+                target.type_(), target.code(), event.value(), e);
         }
 
         Ok(())

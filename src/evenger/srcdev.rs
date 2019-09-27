@@ -10,6 +10,14 @@ pub struct SourceDevice {
     dev: Device,
 }
 
+pub struct Event {
+    srcdev_id: Rc<String>,
+    base: InputEvent,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct EventTarget(u32, u32);
+
 pub enum Modifier {
     Key(u32),
     // TODO: Abs(u32), // min/max/resoultin? multitouch?
@@ -45,10 +53,13 @@ impl SourceDevice {
             .expect("SourceDevice should be backed by an actual file")
     }
 
-    pub fn read_event(&self) -> Result<Option<InputEvent>> {
+    pub fn read_event(&self) -> Result<Option<Event>> {
         loop {
             match self.dev.next_event(ReadFlag::Normal)? {
-                ReadStatus::Success(ev) => return Ok(Some(ev)),
+                ReadStatus::Success(ev) => {
+                    let event = Event::new(self.id(), ev);
+                    return Ok(Some(event))
+                },
                 ReadStatus::Sync(_) => continue,
                 ReadStatus::TryAgain => return Ok(None),
             }
@@ -73,4 +84,30 @@ impl SourceDevice {
             None => None,
         }
     }
+}
+
+impl Event {
+    pub fn new(srcdev_id: Rc<String>, base: InputEvent) -> Self {
+        Self { srcdev_id, base }
+    }
+
+    pub fn srcdev_id(&self) -> Rc<String> {
+        Rc::clone(&self.srcdev_id)
+    }
+
+    pub fn target(&self) -> EventTarget {
+        EventTarget::new(self.base.type_(), self.base.code())
+    }
+
+    pub fn value(&self) -> i32 {
+        self.base.value()
+    }
+}
+
+impl EventTarget {
+    pub fn new(type_: u32, code: u32) -> Self {
+        Self(type_, code)
+    }
+    pub fn type_(&self) -> u32 { self.0 }
+    pub fn code(&self) -> u32 { self.1 }
 }
