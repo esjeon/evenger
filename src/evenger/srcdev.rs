@@ -2,10 +2,11 @@
 use crate::evdev::{Device, InputEvent, ReadFlag, ReadStatus};
 use crate::foreign::*;
 use super::Result;
+use std::{path::Path, rc::Rc};
 use std::os::unix::io::RawFd;
-use std::path::Path;
 
 pub struct SourceDevice {
+    id: Rc<String>,
     dev: Device,
 }
 
@@ -17,7 +18,7 @@ pub enum Modifier {
 }
 
 impl SourceDevice {
-    pub fn open<P: AsRef<Path>>(devpath: P) -> Result<SourceDevice> {
+    pub fn open<P: AsRef<Path>>(id: Rc<String>, devpath: P) -> Result<SourceDevice> {
         use nix::fcntl::OFlag;
         use nix::sys::stat::Mode;
         let fd = nix::fcntl::open(
@@ -32,7 +33,11 @@ impl SourceDevice {
             eprintln!("cannot grab device {}: {}", devpath.as_ref().to_string_lossy(), e);
         }
 
-        Ok(SourceDevice { dev })
+        Ok(SourceDevice { id, dev })
+    }
+
+    pub fn id(&self) -> Rc<String> {
+        Rc::clone(&self.id)
     }
 
     pub fn fd(&self) -> RawFd {

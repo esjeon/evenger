@@ -9,6 +9,12 @@ pub enum Error {
     Message(String),
 }
 
+impl Error {
+    pub fn msg<S: Into<String>>(msg: S) -> Self {
+        Self::Message(msg.into())
+    }
+}
+
 impl std::fmt::Display for Error {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         match self {

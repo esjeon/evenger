@@ -5,13 +5,15 @@ use super::{Error, Result};
 use super::destdev::{DestinationDevice};
 use super::srcdev::{SourceDevice, Modifier};
 use muxer::Muxer;
+use std::{path::Path, rc::Rc};
 use std::collections::HashMap;
 use std::os::unix::io::RawFd;
-use std::path::Path;
 
 pub struct Evenger {
     muxer: Muxer,
-    srcdevs: HashMap<RawFd, SourceDevice>,
+    srcdevs: Vec<Option<SourceDevice>>,
+    srcdevs_by_fd: HashMap<RawFd, usize>,
+    srcdevs_by_id: HashMap<Rc<String>, usize>,
     destdev: DestinationDevice,
 }
 
@@ -19,21 +21,36 @@ impl Evenger {
     pub fn new() -> Result<Evenger> {
         // TODO: configurable output device
 
+        let muxer = Muxer::new()
+            .map_err(|e| Error::Description("muxer".into(), Box::new(e)))?;
+
+        let destdev = DestinationDevice::new()
+            .map_err(|e| Error::Description("destdev".into(), Box::new(e)))?;
+
         Ok(Evenger {
-            muxer: Muxer::new()
-                .map_err(|e| Error::Description("muxer".into(), Box::new(e)))?,
-            srcdevs: HashMap::new(),
-            destdev: DestinationDevice::new()
-                .map_err(|e| Error::Description("destdev".into(), Box::new(e)))?,
+            muxer,
+            srcdevs: Vec::new(),
+            srcdevs_by_fd: HashMap::new(),
+            srcdevs_by_id: HashMap::new(),
+            destdev,
         })
     }
 
-    pub fn open_device<P: AsRef<Path>>(&mut self, devpath: P) -> Result<()> {
-        let srcdev = SourceDevice::open(devpath)?;
+    pub fn open_device<S, P>(&mut self, id: S, devpath: P) -> Result<()> 
+        where S: Into<String>,
+              P: AsRef<Path>,
+    {
+        let id = Rc::new(id.into());
+
+        let srcdev = SourceDevice::open(Rc::clone(&id), devpath)?;
         let fd = srcdev.fd();
 
         self.muxer.watch_input(fd)?;
-        self.srcdevs.insert(fd, srcdev);
+
+        let idx = self.srcdevs.len();
+        self.srcdevs.push(Some(srcdev));
+        self.srcdevs_by_fd.insert(fd, idx);
+        self.srcdevs_by_id.insert(id, idx);
 
         Ok(())
     }
@@ -46,11 +63,11 @@ impl Evenger {
                 }
 
                 if mux_ev.hungup() {
-                    self.srcdevs.remove(&mux_ev.fd());
+                    self.remove_srcdev_by_fd(mux_ev.fd());
                 }
             }
 
-            if self.srcdevs.len() == 0 {
+            if self.srcdevs_by_fd.len() == 0 {
                 break
             }
         }
@@ -58,9 +75,42 @@ impl Evenger {
         Ok(())
     }
 
+    fn get_srcdev_by_fd(&self, fd: RawFd) -> Option<&SourceDevice> {
+        match self.srcdevs_by_fd.get(&fd) {
+            Some(idx) => self.srcdevs[*idx].as_ref(),
+            None => None,
+        }
+    }
+
+    fn get_srcdev_by_id(&self, id: Rc<String>) -> Option<&SourceDevice> {
+        match self.srcdevs_by_id.get(&id) {
+            Some(idx) => self.srcdevs[*idx].as_ref(),
+            None => None,
+        }
+    }
+
+    fn remove_srcdev_by_fd(&mut self, fd: RawFd) {
+        let idx = match self.srcdevs_by_fd.get(&fd) {
+            Some(v) => *v,
+            None => return,
+        };
+        self.srcdevs_by_fd.remove(&fd);
+
+        let id = {
+            let srcdev = match &self.srcdevs[idx] {
+                Some(v) => v,
+                None => return,
+            };
+            srcdev.id()
+        };
+        self.srcdevs_by_id.remove(&id);
+
+        self.srcdevs[idx] = None;
+    }
+
     fn on_srcdev_ready(&self, fd: RawFd) -> Result<()> {
-        let srcdev = self.srcdevs.get(&fd)
-            .ok_or_else(|| Error::Message("invalid fd".into()))?;
+        let srcdev = self.get_srcdev_by_fd(fd)
+            .ok_or_else(|| Error::msg("invalid fd"))?;
 
         loop {
             match srcdev.read_event()? {
