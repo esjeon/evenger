@@ -6,6 +6,8 @@ use std::{path::Path, rc::Rc, rc::Weak};
 use std::collections::HashMap;
 use std::os::unix::io::RawFd;
 
+pub type DeviceModifier = (Option<DeviceId>, Modifier);
+
 #[derive(Default)]
 pub struct SourceDeviceSet {
     fdmap: HashMap<RawFd, Rc<SourceDevice>>,
@@ -25,12 +27,14 @@ pub struct Event {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct EventTarget(u32, u32);
 
+#[derive(Clone, PartialEq)]
 pub enum Modifier {
     Key(u32),
     // TODO: Abs(u32), // min/max/resoultin? multitouch?
     Led(u32),
     Switch(u32),
 }
+
 
 impl SourceDeviceSet {
     pub fn new() -> Self {
@@ -65,6 +69,21 @@ impl SourceDeviceSet {
 
     pub fn get_by_fd(&self, fd: RawFd) -> Option<Rc<SourceDevice>> {
         self.fdmap.get(&fd).map(|rc| rc.clone())
+    }
+
+    pub fn test_modifier(&self, devmod: DeviceModifier) -> bool {
+        let (srcdev_id, modf) = devmod;
+        match srcdev_id {
+            Some(id) => self.get_by_id(id)
+                            .map(|srcdev|
+                                srcdev.match_modifier(modf)
+                                      .unwrap_or(false))
+                            .unwrap_or(false),
+            None => self.fdmap.values()
+                        .any(|srcdev|
+                            srcdev.match_modifier(modf.clone())
+                                  .unwrap_or(false)),
+        }  
     }
 }
 

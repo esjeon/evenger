@@ -3,6 +3,7 @@ mod evenger;
 mod error;
 mod srcdev;
 mod destdev;
+mod rule;
 
 pub use evenger::Evenger;
 pub use error::Error;
