@@ -2,8 +2,15 @@
 use crate::evdev::{Device, InputEvent, ReadFlag, ReadStatus};
 use crate::foreign::*;
 use super::{DeviceId, Result};
-use std::{path::Path, rc::Rc};
+use std::{path::Path, rc::Rc, rc::Weak};
+use std::collections::HashMap;
 use std::os::unix::io::RawFd;
+
+#[derive(Default)]
+pub struct SourceDeviceSet {
+    fdmap: HashMap<RawFd, Rc<SourceDevice>>,
+    idmap: HashMap<DeviceId, Weak<SourceDevice>>,
+}
 
 pub struct SourceDevice {
     id: DeviceId,
@@ -23,6 +30,42 @@ pub enum Modifier {
     // TODO: Abs(u32), // min/max/resoultin? multitouch?
     Led(u32),
     Switch(u32),
+}
+
+impl SourceDeviceSet {
+    pub fn new() -> Self {
+        Default::default()
+    }
+
+    pub fn len(&self) -> usize {
+        self.fdmap.len()
+    }
+
+    pub fn push(&mut self, srcdev: SourceDevice) {
+        let (id, fd) = (srcdev.id(), srcdev.fd());
+        let srcdev = Rc::new(srcdev);
+
+        self.fdmap.insert(fd, Rc::clone(&srcdev));
+        self.idmap.insert(id, Rc::downgrade(&srcdev));
+    }
+
+    pub fn remove_by_fd(&mut self, fd: RawFd) {
+        if let Some(srcdev) = self.get_by_fd(fd) {
+            self.fdmap.remove(&fd);
+            self.idmap.remove(&srcdev.id());
+        }
+    }
+
+    pub fn get_by_id(&self, id: DeviceId) -> Option<Rc<SourceDevice>> {
+        match self.idmap.get(&id) {
+            Some(weak) => weak.upgrade(),
+            None => None,
+        }
+    }
+
+    pub fn get_by_fd(&self, fd: RawFd) -> Option<Rc<SourceDevice>> {
+        self.fdmap.get(&fd).map(|rc| rc.clone())
+    }
 }
 
 impl SourceDevice {

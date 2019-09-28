@@ -2,17 +2,14 @@
 use crate::muxer;
 use super::{Error, Result};
 use super::destdev::{DestinationDevice};
-use super::srcdev::{SourceDevice, Event, Modifier};
+use super::srcdev::{SourceDeviceSet, SourceDevice, Event, Modifier};
 use muxer::Muxer;
 use std::{path::Path, rc::Rc};
-use std::collections::HashMap;
 use std::os::unix::io::RawFd;
 
 pub struct Evenger {
     muxer: Muxer,
-    srcdevs: Vec<Option<SourceDevice>>,
-    srcdevs_by_fd: HashMap<RawFd, usize>,
-    srcdevs_by_id: HashMap<Rc<String>, usize>,
+    srcdevs: SourceDeviceSet,
     destdev: DestinationDevice,
 }
 
@@ -28,9 +25,7 @@ impl Evenger {
 
         Ok(Evenger {
             muxer,
-            srcdevs: Vec::new(),
-            srcdevs_by_fd: HashMap::new(),
-            srcdevs_by_id: HashMap::new(),
+            srcdevs: SourceDeviceSet::new(),
             destdev,
         })
     }
@@ -45,11 +40,7 @@ impl Evenger {
         let fd = srcdev.fd();
 
         self.muxer.watch_input(fd)?;
-
-        let idx = self.srcdevs.len();
-        self.srcdevs.push(Some(srcdev));
-        self.srcdevs_by_fd.insert(fd, idx);
-        self.srcdevs_by_id.insert(id, idx);
+        self.srcdevs.push(srcdev);
 
         Ok(())
     }
@@ -62,11 +53,11 @@ impl Evenger {
                 }
 
                 if mux_ev.hungup() {
-                    self.remove_srcdev_by_fd(mux_ev.fd());
+                    self.srcdevs.remove_by_fd(mux_ev.fd());
                 }
             }
 
-            if self.srcdevs_by_fd.len() == 0 {
+            if self.srcdevs.len() == 0 {
                 break
             }
         }
@@ -74,41 +65,8 @@ impl Evenger {
         Ok(())
     }
 
-    fn get_srcdev_by_fd(&self, fd: RawFd) -> Option<&SourceDevice> {
-        match self.srcdevs_by_fd.get(&fd) {
-            Some(idx) => self.srcdevs[*idx].as_ref(),
-            None => None,
-        }
-    }
-
-    fn get_srcdev_by_id(&self, id: Rc<String>) -> Option<&SourceDevice> {
-        match self.srcdevs_by_id.get(&id) {
-            Some(idx) => self.srcdevs[*idx].as_ref(),
-            None => None,
-        }
-    }
-
-    fn remove_srcdev_by_fd(&mut self, fd: RawFd) {
-        let idx = match self.srcdevs_by_fd.get(&fd) {
-            Some(v) => *v,
-            None => return,
-        };
-        self.srcdevs_by_fd.remove(&fd);
-
-        let id = {
-            let srcdev = match &self.srcdevs[idx] {
-                Some(v) => v,
-                None => return,
-            };
-            srcdev.id()
-        };
-        self.srcdevs_by_id.remove(&id);
-
-        self.srcdevs[idx] = None;
-    }
-
     fn on_srcdev_ready(&self, fd: RawFd) -> Result<()> {
-        let srcdev = self.get_srcdev_by_fd(fd)
+        let srcdev = self.srcdevs.get_by_fd(fd)
             .ok_or_else(|| Error::msg("invalid fd"))?;
 
         loop {
@@ -130,7 +88,7 @@ impl Evenger {
 
         match (target.type_(), target.code()) {
             (EV_REL, REL_Y) => {
-                let mouse_dev = self.get_srcdev_by_id(Rc::new("mouse".to_string()))
+                let mouse_dev = self.srcdevs.get_by_id(Rc::new("mouse".to_string()))
                     .ok_or_else(|| Error::msg("can't get device 'mouse'"))?;
 
                 if Some(true) == mouse_dev.match_modifier(Modifier::Key(BTN_TASK)) {
@@ -141,7 +99,7 @@ impl Evenger {
                 }
             },
             (EV_KEY, KEY_CAPSLOCK) => {
-                let keyboard_dev = self.get_srcdev_by_id(Rc::new("keyboard".to_string()))
+                let keyboard_dev = self.srcdevs.get_by_id(Rc::new("keyboard".to_string()))
                     .ok_or_else(|| Error::msg("can't get device 'keyboard'"))?;
 
                 if Some(true) == keyboard_dev.match_modifier(Modifier::Led(LED_CAPSL)) {
@@ -152,7 +110,7 @@ impl Evenger {
                 }
             },
             (EV_KEY, KEY_LEFTSHIFT) => {
-                let keyboard_dev = self.get_srcdev_by_id(Rc::new("keyboard".to_string()))
+                let keyboard_dev = self.srcdevs.get_by_id(Rc::new("keyboard".to_string()))
                     .ok_or_else(|| Error::msg("can't get device 'keyboard'"))?;
 
                 if Some(true) == keyboard_dev.match_modifier(Modifier::Led(LED_CAPSL)) {
