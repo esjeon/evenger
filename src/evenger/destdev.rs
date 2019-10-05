@@ -11,6 +11,16 @@ pub struct DestinationDevice {
     should_sync: Cell<bool>,
 }
 
+#[derive(Clone)]
+pub enum Action {
+    RelativeMove {
+        code: u32,
+        amount100: i32,
+    },
+    KeyUp(u32),
+    KeyDown(u32),
+}
+
 #[derive(Default)]
 struct InternalComponents {
     relative: Option<Vec<Cell<RelativeComponent>>>,
@@ -80,6 +90,15 @@ impl DestinationDevice {
     pub fn write_event(&self, type_: u32, code: u32, value: i32) -> Result<()> {
         self.should_sync.set(true);
         Ok(self.uidev.write_event(type_, code, value)?)
+    }
+
+    pub fn perform_action(&self, action: Action) -> Result<()> {
+        match action {
+            Action::RelativeMove{code, amount100}
+                => self.move_relative(code, (amount100 as f32) / 100f32),
+            Action::KeyDown(code) => self.press_key(code, true ),
+            Action::KeyUp  (code) => self.press_key(code, false),
+        }
     }
 
     pub fn move_relative(&self, code: u32, amount: f32) -> Result<()> {

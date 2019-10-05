@@ -21,6 +21,7 @@ pub struct ModifierRule {
 
 pub struct ActionRule {
     phase: ActionPhase,
+    action: Action,
 }
 
 pub enum ActionPhase {
