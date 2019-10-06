@@ -91,7 +91,7 @@ impl Evenger {
                 let mouse_dev = self.srcdevs.get_by_id(Rc::new("mouse".to_string()))
                     .ok_or_else(|| Error::msg("can't get device 'mouse'"))?;
 
-                if Some(true) == mouse_dev.match_modifier(Modifier::Key(BTN_TASK)) {
+                if Some(true) == mouse_dev.match_modifier(Modifier::Key(BTN_TASK, true)) {
                     /* mapping REL to REL */
                     self.destdev.move_relative(REL_WHEEL,
                         event.value() as f32 / -16.0f32)?;
@@ -102,7 +102,7 @@ impl Evenger {
                 let keyboard_dev = self.srcdevs.get_by_id(Rc::new("keyboard".to_string()))
                     .ok_or_else(|| Error::msg("can't get device 'keyboard'"))?;
 
-                if Some(true) == keyboard_dev.match_modifier(Modifier::Led(LED_CAPSL)) {
+                if Some(true) == keyboard_dev.match_modifier(Modifier::Led(LED_CAPSL, true)) {
                     if event.value() == /* down */1  {
                         /* ignore */
                         return Ok(());
@@ -113,7 +113,7 @@ impl Evenger {
                 let keyboard_dev = self.srcdevs.get_by_id(Rc::new("keyboard".to_string()))
                     .ok_or_else(|| Error::msg("can't get device 'keyboard'"))?;
 
-                if Some(true) == keyboard_dev.match_modifier(Modifier::Led(LED_CAPSL)) {
+                if Some(true) == keyboard_dev.match_modifier(Modifier::Led(LED_CAPSL, true)) {
                     self.destdev.press_key(KEY_CAPSLOCK, true)?;
                     self.destdev.press_key(KEY_CAPSLOCK, false)?;
                 }

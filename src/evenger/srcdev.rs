@@ -6,8 +6,6 @@ use std::{path::Path, rc::Rc, rc::Weak};
 use std::collections::HashMap;
 use std::os::unix::io::RawFd;
 
-pub type DeviceModifier = (Option<DeviceId>, Modifier);
-
 #[derive(Default)]
 pub struct SourceDeviceSet {
     fdmap: HashMap<RawFd, Rc<SourceDevice>>,
@@ -29,10 +27,10 @@ pub struct EventTarget(u32, u32);
 
 #[derive(Clone, PartialEq)]
 pub enum Modifier {
-    Key(u32),
+    Key(u32, bool),
     // TODO: Abs(u32), // min/max/resoultin? multitouch?
-    Led(u32),
-    Switch(u32),
+    Led(u32, bool),
+    Switch(u32, bool),
 }
 
 
@@ -71,9 +69,8 @@ impl SourceDeviceSet {
         self.fdmap.get(&fd).map(|rc| rc.clone())
     }
 
-    pub fn test_modifier(&self, devmod: DeviceModifier) -> bool {
-        let (srcdev_id, modf) = devmod;
-        match srcdev_id {
+    pub fn test_modifier(&self, device: Option<DeviceId>, modf: Modifier) -> bool {
+        match device {
             Some(id) => self.get_by_id(id)
                             .map(|srcdev|
                                 srcdev.match_modifier(modf)
@@ -134,15 +131,18 @@ impl SourceDevice {
     }
 
     pub fn match_modifier(&self, modf: Modifier) -> Option<bool> {
-        let (type_, code) = match modf {
-            Modifier::Key(code)    => (EV_KEY, code),
-            Modifier::Led(code)    => (EV_LED, code),
-            Modifier::Switch(code) => (EV_SW, code),
-            // _ => return None,
+        let (type_, code, val) = match modf {
+            Modifier::Key(code, true)     => (EV_KEY, code, 1),
+            Modifier::Key(code, false)    => (EV_KEY, code, 0),
+            Modifier::Led(code, true)     => (EV_LED, code, 1),
+            Modifier::Led(code, false)    => (EV_LED, code, 0),
+            Modifier::Switch(code, true)  => (EV_SW , code, 1),
+            Modifier::Switch(code, false) => (EV_SW , code, 0),
+            _ => return None,
         };
 
         match self.get_event_state(type_, code) {
-            Some(v) => Some(v != 0),
+            Some(v) => Some(v == val),
             None => None,
         }
     }

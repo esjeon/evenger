@@ -9,22 +9,26 @@ pub struct RuleSet {
 }
 
 pub struct Rule {
-    srcdev_id: Option<DeviceId>,
-    target: EventTarget,
-    modifier_rules: Vec<Rc<ModifierRule>>,
+    device: Option<DeviceId>,
+    main: EventTarget,
+    modifiers: Box<[ModifierRule]>,
+    actions: Vec<ActionRule>,
 }
 
+#[derive(Clone, PartialEq)]
 pub struct ModifierRule {
-    modifiers: Vec<(Option<DeviceId>, Modifier)>,
-    action_rules: Vec<ActionRule>,
+    device: Option<DeviceId>,
+    target: Modifier,
 }
 
+#[derive(Clone)]
 pub struct ActionRule {
-    phase: ActionPhase,
+    phase: ActionRulePhase,
     action: Action,
 }
 
-pub enum ActionPhase {
+#[derive(Clone)]
+pub enum ActionRulePhase {
     PreAction,
     PeriAction,
     PostAction,
@@ -38,84 +42,66 @@ impl RuleSet {
         }
     }
 
-    pub fn add_rule(&mut self,
-        srcdev_id: Option<DeviceId>,
-        target: EventTarget,
-        modifiers: &[DeviceModifier],
-        phase: ActionPhase,
+    pub fn insert_rule(&mut self,
+        device: Option<DeviceId>,
+        main: EventTarget,
+        modifiers: &[ModifierRule],
+        phase: ActionRulePhase,
+        action: Action,
     ) {
-        let rule = self.get_rule_or_create(&srcdev_id, target);
-        let mod_rule = rule.get_modifier_rule(modifiers);
+        self.get_or_create_rule_mut(device, main, modifiers)
+            .add_action(ActionRule::new(phase, action));
     }
 
-    pub fn get_rule(&self, srcdev_id: &Option<DeviceId>, target: EventTarget) -> Option<Rc<Rule>> {
-        (&self.rules).iter()
-            .find(move |&rule: &&Rc<Rule>|
-                rule.srcdev_id == *srcdev_id &&
-                rule.target == target
-            )
-            .map(|rule: &Rc<Rule>| Rc::clone(rule))
+    pub fn match_rules(&self) {
+        // TODO: implement this
     }
 
-    pub fn get_rule_or_create(&mut self, srcdev_id: &Option<DeviceId>, target: EventTarget) -> Rc<Rule> {
-        match self.get_rule(srcdev_id, target) {
+    fn get_or_create_rule_mut(&mut self, device: Option<DeviceId>, main: EventTarget, modifiers: &[ModifierRule]) -> &mut Rule {
+        let idx: Option<usize> = self.rules.iter()
+            .position(|rule: &Rc<Rule>|
+                rule.device == device &&
+                rule.main == main &&
+                &*rule.modifiers == modifiers
+            );
+
+        let idx = match idx {
             Some(v) => v,
             None => {
-                let rule = Rc::new(Rule::new(srcdev_id.clone(), target));
-                self.rules.push(rule.clone());
-                rule
+                let rule = Rule::new(device, main, modifiers);
+                self.rules.push(Rc::new(rule));
+                self.rules.len() - 1
             }
-        }
+        };
+
+        Rc::get_mut(&mut self.rules[idx]).unwrap()
     }
 }
 
 impl Rule {
-    pub fn new(srcdev_id: Option<DeviceId>, target: EventTarget) -> Self {
+    pub fn new(
+        device: Option<DeviceId>,
+        main: EventTarget,
+        modifiers: &[ModifierRule],
+    ) -> Self {
         Self {
-            srcdev_id,
-            target,
-            modifier_rules: Vec::new(),
+            device,
+            main,
+            modifiers: Vec::from(modifiers).into_boxed_slice(),
+            actions: Vec::new(),
         }
     }
 
-    pub fn get_modifier_rule(&self, modifiers: &[DeviceModifier]) -> Option<Rc<ModifierRule>> {
-        self.modifier_rules.iter()
-            .find(|modr: &&Rc<ModifierRule>|
-                modr.modifiers == modifiers)
-            .map(|modr| modr.clone())
-    }
-
-    pub fn get_modifier_rule_or_create(&mut self, modifiers: &[DeviceModifier]) -> Rc<ModifierRule> {
-        match self.get_modifier_rule(modifiers) {
-            Some(v) => v,
-            None => {
-                let mod_rule = Rc::new(ModifierRule::new(modifiers));
-                self.modifier_rules.push(mod_rule.clone());
-                mod_rule
-            },
-        }
-    }
-
-    pub fn find_modifier_rule(&self, srcdevs: &SourceDeviceSet) -> Option<Rc<ModifierRule>> {
-        self.modifier_rules.iter()
-            .find(|modr|
-                modr.matches(srcdevs))
-            .map(|modr|
-                Rc::clone(modr))
+    fn add_action(&mut self, action: ActionRule) {
+        self.actions.push(action);
     }
 }
 
-impl ModifierRule {
-    pub fn new(modifiers: &[DeviceModifier]) -> Self {
+impl ActionRule {
+    pub fn new(phase: ActionRulePhase, action: Action) -> Self {
         Self {
-            modifiers: Vec::from(modifiers),
-            action_rules: Vec::new(),
+            phase,
+            action,
         }
-    }
-
-    pub fn matches(&self, srcdevs: &SourceDeviceSet) -> bool {
-        self.modifiers.iter()
-            .all(|devmod|
-                srcdevs.test_modifier(devmod.clone()))
     }
 }
